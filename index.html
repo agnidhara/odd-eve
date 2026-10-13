@@ -1,1 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+  <title>ODD-EVE Cricket Edition</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      background: #080812;
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      width: 92%;
+      max-width: 650px;
+      text-align: center;
+    }
+
+    .logo {
+      font-size: 52px;
+      font-weight: 900;
+      margin-bottom: 5px;
+    }
+
+    .subtitle {
+      color: #aaa;
+      margin-bottom: 35px;
+    }
+
+    .card {
+      background: #131326;
+      border: 1px solid #29294a;
+      border-radius: 20px;
+      padding: 30px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.35);
+    }
+
+    input {
+      width: 100%;
+      padding: 15px;
+      margin: 8px 0;
+      border-radius: 10px;
+      border: 1px solid #39395c;
+      background: #0c0c19;
+      color: white;
+      font-size: 16px;
+      outline: none;
+    }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 10px;
+      background: #7c3aed;
+      color: white;
+      font-size: 17px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #9257f5;
+    }
+
+    .join-button {
+      background: #2563eb;
+    }
+
+    .join-button:hover {
+      background: #3674ed;
+    }
+
+    .room-code {
+      font-size: 42px;
+      font-weight: 900;
+      letter-spacing: 8px;
+      color: #a78bfa;
+      margin: 20px 0;
+    }
+
+    .status {
+      color: #aaa;
+      margin-top: 15px;
+      min-height: 24px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .success {
+      color: #4ade80;
+    }
+
+    .error {
+      color: #f87171;
+    }
+
+    .player {
+      padding: 12px;
+      background: #0d0d1d;
+      border-radius: 10px;
+      margin: 8px 0;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <div class="logo">🏏 ODD-EVE</div>
+  <div class="subtitle">CRICKET EDITION</div>
+
+  <!-- HOME -->
+  <div id="homeScreen" class="card">
+
+    <h2>Online Multiplayer</h2>
+
+    <input
+      id="playerName"
+      type="text"
+      placeholder="Enter your player name"
+      maxlength="20"
+    >
+
+    <button onclick="createMatch()">
+      🏏 CREATE MATCH
+    </button>
+
+    <hr style="border-color:#29294a; margin:25px 0;">
+
+    <input
+      id="roomInput"
+      type="text"
+      placeholder="Enter room code"
+      maxlength="6"
+      style="text-transform:uppercase;"
+    >
+
+    <button class="join-button" onclick="joinMatch()">
+      🔑 JOIN MATCH
+    </button>
+
+    <div id="homeStatus" class="status"></div>
+
+  </div>
+
+
+  <!-- ROOM -->
+  <div id="roomScreen" class="card hidden">
+
+    <h2>🏏 Match Lobby</h2>
+
+    <p>Share this code with Player 2:</p>
+
+    <div id="roomCode" class="room-code"></div>
+
+    <div class="player">
+      👤 Player 1:
+      <strong id="player1Name">Waiting...</strong>
+    </div>
+
+    <div class="player">
+      👤 Player 2:
+      <strong id="player2Name">Waiting...</strong>
+    </div>
+
+    <div id="roomStatus" class="status">
+      Waiting for Player 2...
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+
+  // ==========================================================
+  // FIREBASE CONFIG
+  // ==========================================================
+
+  const firebaseConfig = {
+
+    // 👇 PASTE YOUR FIREBASE CONFIG VALUES HERE
+
+    apiKey: "PASTE_YOUR_API_KEY_HERE",
+    authDomain: "PASTE_YOUR_AUTH_DOMAIN_HERE",
+    databaseURL: "PASTE_YOUR_DATABASE_URL_HERE",
+    projectId: "odd-eve-cricket",
+    storageBucket: "PASTE_YOUR_STORAGE_BUCKET_HERE",
+    messagingSenderId: "PASTE_YOUR_MESSAGING_SENDER_ID_HERE",
+    appId: "PASTE_YOUR_APP_ID_HERE"
+
+  };
+
+
+  // Start Firebase
+  firebase.initializeApp(firebaseConfig);
+
+  const auth = firebase.auth();
+  const database = firebase.database();
+
+  let currentUser = null;
+  let currentRoom = null;
+
+
+  // ==========================================================
+  // ANONYMOUS LOGIN
+  // ==========================================================
+
+  auth.signInAnonymously()
+    .then((result) => {
+
+      currentUser = result.user;
+
+      console.log("Firebase connected!");
+      console.log("Player ID:", currentUser.uid);
+
+    })
+    .catch((error) => {
+
+      console.error(error);
+
+      document.getElementById("homeStatus").innerHTML =
+        '<span class="error">Firebase connection failed.</span>';
+
+    });
+
+
+  // ==========================================================
+  // GENERATE ROOM CODE
+  // ==========================================================
+
+  function generateRoomCode() {
+
+    const characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+    let code = "";
+
+    for (let i = 0; i < 6; i++) {
+
+      code += characters.charAt(
+        Math.floor(Math.random() * characters.length)
+      );
+
+    }
+
+    return code;
+  }
+
+
+  // ==========================================================
+  // CREATE MATCH
+  // ==========================================================
+
+  async function createMatch() {
+
+    const name =
+      document.getElementById("playerName").value.trim();
+
+    if (!name) {
+
+      showHomeStatus(
+        "Enter your player name first.",
+        "error"
+      );
+
+      return;
+    }
+
+    if (!currentUser) {
+
+      showHomeStatus(
+        "Connecting to Firebase... try again in a second.",
+        "error"
+      );
+
+      return;
+    }
+
+
+    let roomCode = generateRoomCode();
+
+    let roomRef = database.ref("rooms/" + roomCode);
+
+    let snapshot = await roomRef.once("value");
+
+
+    // Very unlikely, but make sure code isn't already used
+    while (snapshot.exists()) {
+
+      roomCode = generateRoomCode();
+
+      roomRef = database.ref("rooms/" + roomCode);
+
+      snapshot = await roomRef.once("value");
+    }
+
+
+    await roomRef.set({
+
+      status: "waiting",
+
+      player1: {
+
+        uid: currentUser.uid,
+
+        name: name
+
+      },
+
+      player2: null,
+
+      game: {
+
+        phase: "lobby"
+
+      }
+
+    });
+
+
+    currentRoom = roomCode;
+
+    openRoom(roomCode);
+
+    listenToRoom(roomCode);
+  }
+
+
+  // ==========================================================
+  // JOIN MATCH
+  // ==========================================================
+
+  async function joinMatch() {
+
+    const name =
+      document.getElementById("playerName").value.trim();
+
+    const roomCode =
+      document.getElementById("roomInput").value
+        .trim()
+        .toUpperCase();
+
+
+    if (!name) {
+
+      showHomeStatus(
+        "Enter your player name first.",
+        "error"
+      );
+
+      return;
+    }
+
+
+    if (roomCode.length !== 6) {
+
+      showHomeStatus(
+        "Room codes have 6 characters.",
+        "error"
+      );
+
+      return;
+    }
+
+
+    if (!currentUser) {
+
+      showHomeStatus(
+        "Connecting to Firebase... try again in a second.",
+        "error"
+      );
+
+      return;
+    }
+
+
+    const roomRef =
+      database.ref("rooms/" + roomCode);
+
+    const snapshot =
+      await roomRef.once("value");
+
+
+    if (!snapshot.exists()) {
+
+      showHomeStatus(
+        "That room does not exist.",
+        "error"
+      );
+
+      return;
+    }
+
+
+    const room = snapshot.val();
+
+
+    if (room.player2) {
+
+      showHomeStatus(
+        "That match already has two players.",
+        "error"
+      );
+
+      return;
+    }
+
+
+    await roomRef.update({
+
+      status: "ready",
+
+      player2: {
+
+        uid: currentUser.uid,
+
+        name: name
+
+      }
+
+    });
+
+
+    currentRoom = roomCode;
+
+    openRoom(roomCode);
+
+    listenToRoom(roomCode);
+  }
+
+
+  // ==========================================================
+  // OPEN ROOM SCREEN
+  // ==========================================================
+
+  function openRoom(roomCode) {
+
+    document
+      .getElementById("homeScreen")
+      .classList.add("hidden");
+
+    document
+      .getElementById("roomScreen")
+      .classList.remove("hidden");
+
+    document
+      .getElementById("roomCode")
+      .textContent = roomCode;
+  }
+
+
+  // ==========================================================
+  // LISTEN FOR PLAYER 2
+  // ==========================================================
+
+  function listenToRoom(roomCode) {
+
+    database
+      .ref("rooms/" + roomCode)
+      .on("value", (snapshot) => {
+
+        if (!snapshot.exists()) return;
+
+
+        const room = snapshot.val();
+
+
+        document
+          .getElementById("player1Name")
+          .textContent =
+          room.player1
+            ? room.player1.name
+            : "Waiting...";
+
+
+        document
+          .getElementById("player2Name")
+          .textContent =
+          room.player2
+            ? room.player2.name
+            : "Waiting...";
+
+
+        if (room.player2) {
+
+          document
+            .getElementById("roomStatus")
+            .innerHTML =
+            '<span class="success">✅ Player 2 joined! Match ready.</span>';
+
+        } else {
+
+          document
+            .getElementById("roomStatus")
+            .textContent =
+            "Waiting for Player 2...";
+
+        }
+
+      });
+  }
+
+
+  // ==========================================================
+  // STATUS MESSAGE
+  // ==========================================================
+
+  function showHomeStatus(message, type) {
+
+    document
+      .getElementById("homeStatus")
+      .innerHTML =
+      '<span class="' + type + '">' +
+      message +
+      '</span>';
+  }
+
+</script>
+
+</body>
+</html>
